@@ -10,7 +10,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://alumni-backend-6xcz.onrender.com',
+        target: 'https://alumni-backend-d17w.onrender.com',
         changeOrigin: true,
       },
     },
