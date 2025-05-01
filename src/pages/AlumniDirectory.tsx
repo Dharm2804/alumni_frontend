@@ -85,20 +85,21 @@ export default function AlumniDirectory() {
           year: selectedYear,
           ...filters,
         });
-
+    
         const response = await fetch(`/api/get_alumni_paginated?${queryParams}`, {
           credentials: "include",
         });
-        const data = await response.json();
-
-        if (response.ok) {
-          setAlumniData(data.alumni);
-          setTotalPages(data.pages);
-        } else {
-          console.error(data.message);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
+        
+        const data = await response.json();
+        setAlumniData(data.alumni);
+        setTotalPages(data.pages);
       } catch (error) {
         console.error("Error fetching alumni:", error);
+        // You might want to set some error state here to show to the user
       } finally {
         setLoading(false);
       }
