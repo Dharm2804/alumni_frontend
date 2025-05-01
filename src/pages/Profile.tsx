@@ -35,7 +35,7 @@ const Profile = () => {
       }
 
       try {
-        const response = await fetch('/api/profile', {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/profile`, {
           headers: {
             email: email,
           },
@@ -155,7 +155,7 @@ const Profile = () => {
         })),
       };
 
-      const response = await fetch('/api/update_profile', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/update_profile`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -170,7 +170,7 @@ const Profile = () => {
         setMessage('Profile updated successfully');
         setIsEditing(false);
         // Refresh profile data
-        const fetchResponse = await fetch('/api/profile', {
+        const fetchResponse = await fetch(`${import.meta.env.VITE_API_URL}/api/profile`, {
           headers: {
             email: email,
           },

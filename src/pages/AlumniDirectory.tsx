@@ -32,7 +32,7 @@ interface FilterOptions {
 
 export default function AlumniDirectory() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedYear, setSelectedYear] = useState("all");
+  const [selectedYear] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [alumniData, setAlumniData] = useState<Alumni[]>([]);
   const [totalPages, setTotalPages] = useState(1);
@@ -57,7 +57,7 @@ export default function AlumniDirectory() {
     const fetchEngineeringTypes = async () => {
       setLoading(true);
       try {
-        const response = await fetch('/api/get_alumni');
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/get_alumni`);
         const data = await response.json();
         const types = [...new Set(data.map((alumni: Alumni) => alumni.engineeringType))];
         setUniqueEngineeringTypes(types);
@@ -86,7 +86,7 @@ export default function AlumniDirectory() {
           ...filters,
         });
     
-        const response = await fetch(`/api/get_alumni_paginated?${queryParams}`, {
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/get_alumni_paginated?${queryParams}`, {
           credentials: "include",
         });
         
@@ -115,7 +115,7 @@ export default function AlumniDirectory() {
   const handleDownloadAlumni = async () => {
     setDownloadLoading(true);
     try {
-      const response = await fetch("/api/get_alumni", { credentials: "include" });
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/get_alumni`, { credentials: "include" });
       const data = await response.json();
 
       if (response.ok) {
