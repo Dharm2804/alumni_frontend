@@ -33,11 +33,13 @@ const Invitations: React.FC = () => {
   const [receiverEmail, setReceiverEmail] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [alumniList, setAlumniList] = useState<Alumni[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState<boolean>(false);
+  const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
+  const [isSending, setIsSending] = useState<boolean>(false);
+  const [showSuccess, setShowSuccess] = useState<boolean>(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -50,42 +52,42 @@ const Invitations: React.FC = () => {
 
   const fetchUserData = async () => {
     try {
-      setLoading(true);
       const userEmail = localStorage.getItem('userEmail') || '';
       
-      // Fetch user role
-      const roleResponse = await axios.get(`${import.meta.env.VITE_API_URL}/api/current-user`, {
-        headers: { email: localStorage.getItem('email') },
-        withCredentials: true,
-      });
-      setRole(roleResponse.data.role || '');
+      const [roleResponse, invitationsResponse] = await Promise.all([
+        axios.get(`${import.meta.env.VITE_API_URL}/api/current-user`, {
+          headers: { email: localStorage.getItem('email') },
+          withCredentials: true,
+        }),
+        axios.get<Invitation[]>(`${import.meta.env.VITE_API_URL}/api/invitations`, {
+          headers: { email: localStorage.getItem('email') }
+        })
+      ]);
       
-      // Fetch invitations
-      const invitationsResponse = await axios.get<Invitation[]>(`${import.meta.env.VITE_API_URL}/api/invitations`, {
-        headers: { email: roleResponse.data.email }
-      });
+      setRole(roleResponse.data.role || '');
       setInvitations(invitationsResponse.data);
-
-      // If faculty, fetch alumni list
+      
       if (roleResponse.data.role === 'faculty') {
-        const alumniResponse = await axios.get<Alumni[]>(`${import.meta.env.VITE_API_URL}/api/get_alumni`, {
+        axios.get<Alumni[]>(`${import.meta.env.VITE_API_URL}/api/get_alumni`, {
           headers: { email: userEmail }
+        }).then(response => {
+          setAlumniList(response.data);
+        }).catch(err => {
+          console.error('Error fetching alumni list:', err);
         });
-        setAlumniList(alumniResponse.data);
       }
 
-      setLoading(false);
+      setIsInitialLoad(false);
     } catch (err) {
       setError('Failed to fetch data');
-      setLoading(false);
       console.error('Error fetching user data:', err);
+      setIsInitialLoad(false);
     }
   };
 
   const filterInvitations = () => {
     let result = [...invitations];
     
-    // Apply search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(inv => 
@@ -98,7 +100,6 @@ const Invitations: React.FC = () => {
       );
     }
     
-    // Apply status filter
     if (statusFilter !== 'all') {
       result = result.filter(inv => inv.status === statusFilter);
     }
@@ -108,42 +109,47 @@ const Invitations: React.FC = () => {
 
   const handleSendInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSending(true);
+    setShowSuccess(false);
     try {
-      const roleResponse = await axios.get(`${import.meta.env.VITE_API_URL}/api/current-user`, {
-        headers: { email: localStorage.getItem('email') },
-        withCredentials: true,
-      });
-      
       await axios.post(
         `${import.meta.env.VITE_API_URL}/api/invitations/send`,
         { receiverEmail, description },
-        { headers: { email: roleResponse.data.email } }
+        { headers: { email: localStorage.getItem('email') } }
       );
       setDescription('');
       setReceiverEmail('');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
       fetchUserData();
     } catch (err) {
       setError('Failed to send invitation');
       console.error('Error sending invitation:', err);
+    } finally {
+      setIsSending(false);
     }
   };
 
   const handleResponse = async (invitationId: string, status: 'accepted' | 'rejected') => {
+    setIsSending(true);
     try {
-      const roleResponse = await axios.get(`${import.meta.env.VITE_API_URL}/api/current-user`, {
-        headers: { email: localStorage.getItem('email') },
-        withCredentials: true,
-      });
+      setInvitations(prev => prev.map(inv => 
+        inv._id === invitationId ? { ...inv, status } : inv
+      ));
       
       await axios.put(
         `${import.meta.env.VITE_API_URL}/api/invitations/${invitationId}/respond`,
         { status },
-        { headers: { email: roleResponse.data.email } }
+        { headers: { email: localStorage.getItem('email') } }
       );
+      
       fetchUserData();
     } catch (err) {
       setError('Failed to respond to invitation');
       console.error('Error responding to invitation:', err);
+      fetchUserData();
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -162,15 +168,28 @@ const Invitations: React.FC = () => {
     setStatusFilter('all');
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-    </div>
-  );
-
   if (error) return (
     <div className="min-h-screen flex items-center justify-center text-red-600">
       {error}
+    </div>
+  );
+
+  const renderSkeletonLoader = () => (
+    <div className="space-y-4">
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="bg-white rounded-xl shadow-md p-6 border border-gray-200">
+          <div className="animate-pulse flex space-x-4">
+            <div className="flex-1 space-y-4 py-1">
+              <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+              <div className="space-y-2">
+                <div className="h-4 bg-gray-300 rounded"></div>
+                <div className="h-4 bg-gray-300 rounded w-5/6"></div>
+              </div>
+              <div className="h-4 bg-gray-300 rounded w-1/2"></div>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 
@@ -196,7 +215,6 @@ const Invitations: React.FC = () => {
           </div>
         </motion.div>
 
-        {/* Filter Panel */}
         {showFilters && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
@@ -246,7 +264,6 @@ const Invitations: React.FC = () => {
           </motion.div>
         )}
 
-        {/* Faculty: Send Invitation Form */}
         {role === 'faculty' && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -261,19 +278,23 @@ const Invitations: React.FC = () => {
             <form onSubmit={handleSendInvitation} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Select Alumni</label>
-                <select
-                  value={receiverEmail}
-                  onChange={(e) => setReceiverEmail(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-                  required
-                >
-                  <option value="">Choose an alumni...</option>
-                  {alumniList.map((alumni) => (
-                    <option key={alumni._id} value={alumni.email}>
-                      {alumni.name} ({alumni.email})
-                    </option>
-                  ))}
-                </select>
+                {alumniList.length > 0 ? (
+                  <select
+                    value={receiverEmail}
+                    onChange={(e) => setReceiverEmail(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  >
+                    <option value="">Choose an alumni...</option>
+                    {alumniList.map((alumni) => (
+                      <option key={alumni._id} value={alumni.email}>
+                        {alumni.name} ({alumni.email})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="animate-pulse h-10 bg-gray-200 rounded-md"></div>
+                )}
               </div>
               
               <div>
@@ -292,18 +313,37 @@ const Invitations: React.FC = () => {
               <div className="flex justify-end">
                 <motion.button
                   type="submit"
-                  className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition flex items-center"
-                  whileHover={{ scale: 1.05 }}
+                  disabled={isSending}
+                  className={`flex items-center px-6 py-2 rounded-lg transition ${
+                    isSending ? 'bg-gray-400' : showSuccess ? 'bg-green-600' : 'bg-blue-600'
+                  } text-white hover:bg-blue-700`}
+                  whileHover={{ scale: isSending ? 1 : 1.05 }}
                 >
-                  <FaPaperPlane className="mr-2" />
-                  Send Invitation
+                  {isSending ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Sending...
+                    </>
+                  ) : showSuccess ? (
+                    <>
+                      <FaCheck className="mr-2" />
+                      Sent
+                    </>
+                  ) : (
+                    <>
+                      <FaPaperPlane className="mr-2" />
+                      Send Invitation
+                    </>
+                  )}
                 </motion.button>
               </div>
             </form>
           </motion.div>
         )}
 
-        {/* Invitation List */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -314,12 +354,16 @@ const Invitations: React.FC = () => {
               <FaInbox className="mr-2 text-blue-600" />
               {role === 'faculty' ? 'Sent Invitations' : 'Received Invitations'}
             </h2>
-            <span className="text-sm text-gray-500">
-              {filteredInvitations.length} {filteredInvitations.length === 1 ? 'item' : 'items'}
-            </span>
+            {!isInitialLoad && (
+              <span className="text-sm text-gray-500">
+                {filteredInvitations.length} {filteredInvitations.length === 1 ? 'item' : 'items'}
+              </span>
+            )}
           </div>
 
-          {filteredInvitations.length === 0 ? (
+          {isInitialLoad ? (
+            renderSkeletonLoader()
+          ) : filteredInvitations.length === 0 ? (
             <div className="bg-white rounded-xl shadow-md p-8 text-center">
               <p className="text-gray-500">No invitations found</p>
               {searchTerm || statusFilter !== 'all' ? (
@@ -385,19 +429,49 @@ const Invitations: React.FC = () => {
                         <div className="mt-4 sm:mt-0 flex space-x-2">
                           <motion.button
                             onClick={() => handleResponse(invitation._id, 'accepted')}
-                            className="flex items-center bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition"
-                            whileHover={{ scale: 1.05 }}
+                            disabled={isSending}
+                            className={`flex items-center px-4 py-2 rounded-lg/transition-colors ${
+                              isSending ? 'bg-gray-400' : 'bg-green-600 hover:bg-green-700'
+                            } text-white`}
+                            whileHover={{ scale: isSending ? 1 : 1.05 }}
                           >
-                            <FaCheck className="mr-2" />
-                            Accept
+                            {isSending ? (
+                              <>
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                <FaCheck className="mr-2" />
+                                Accept
+                              </>
+                            )}
                           </motion.button>
                           <motion.button
                             onClick={() => handleResponse(invitation._id, 'rejected')}
-                            className="flex items-center bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition"
-                            whileHover={{ scale: 1.05 }}
+                            disabled={isSending}
+                            className={`flex items-center px-4 py-2 rounded-lg transition-colors ${
+                              isSending ? 'bg-gray-400' : 'bg-red-600 hover:bg-red-700'
+                            } text-white`}
+                            whileHover={{ scale: isSending ? 1 : 1.05 }}
                           >
-                            <FaTimes className="mr-2" />
-                            Reject
+                            {isSending ? (
+                              <>
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Processing...
+                              </>
+                            ) : (
+                              <>
+                                <FaTimes className="mr-2" />
+                                Reject
+                              </>
+                            )}
                           </motion.button>
                         </div>
                       )}
